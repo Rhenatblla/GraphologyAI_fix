@@ -8,14 +8,15 @@ dotenv.config();
 connectDB();
 
 const app = express();
-const netlifyurl= "https://graphologyai.netlify.app";
-// CORS Configuration - Allow frontend to communicate
+
 app.use(cors({
-    origin: netlifyurl,
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization']
+  origin: "https://graphologyai.netlify.app",
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"]
 }));
+
+app.options('*', cors()); // ⬅️ WAJIB
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: false, limit: '50mb' }));
