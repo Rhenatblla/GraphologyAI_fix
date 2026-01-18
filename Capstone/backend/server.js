@@ -1,13 +1,16 @@
 const express = require('express');
 const dotenv = require('dotenv');
 const cors = require('cors');
+const cookieParser = require("cookie-parser");
 const connectDB = require('./config/db');
 
 dotenv.config();
-
 connectDB();
 
 const app = express();
+
+// ⬅️ WAJIB ADA
+app.use(cookieParser());
 
 app.use(cors({
   origin: "https://graphologyai.netlify.app",
@@ -16,10 +19,16 @@ app.use(cors({
   allowedHeaders: ["Content-Type", "Authorization"]
 }));
 
-app.options('*', cors()); // ⬅️ WAJIB
+// ⬅️ STOP preflight di sini (PENTING)
+app.options('*', (req, res) => {
+  res.sendStatus(200);
+});
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: false, limit: '50mb' }));
+
+// sisanya tetap sama...
+
 
 // Create uploads directory if it doesn't exist
 const fs = require('fs');
