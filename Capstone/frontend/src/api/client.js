@@ -1,38 +1,32 @@
 import axios from "axios";
 
-const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-console.log("API BASE URL:", apiUrl); // DEBUG
+const apiUrl =
+  process.env.NEXT_PUBLIC_API_URL ||
+  "http://localhost:5000";
+
+console.log("API BASE URL:", apiUrl);
 
 const client = axios.create({
   baseURL: apiUrl,
+  withCredentials: true, // ⬅️ WAJIB untuk cookie auth
   headers: {
     "Content-Type": "application/json",
   },
 });
 
-// Interceptor untuk menambahkan token ke setiap request
-client.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem("authToken");
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
-  },
-);
+// ❌ TIDAK ADA Authorization interceptor
+// ❌ TIDAK ADA localStorage token
 
-// Interceptor untuk handling error global (opsional)
 client.interceptors.response.use(
   (response) => response.data,
   (error) => {
-    const message = error.response?.data?.message || error.message || "Terjadi kesalahan";
-    // Bisa tambahkan logic logout otomatis jika 401 Unauthorized
-    // if (error.response?.status === 401) { ... }
+    const message =
+      error.response?.data?.message ||
+      error.message ||
+      "Terjadi kesalahan";
+
     return Promise.reject(new Error(message));
-  },
+  }
 );
 
 export default client;
