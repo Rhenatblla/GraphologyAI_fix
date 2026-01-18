@@ -1,18 +1,33 @@
-const AnalysisService = require("../services/analysisService");
+const analysisService = require("../services/analysisService");
+const PDFDocument = require("pdfkit");
+const fs = require("fs");
+const path = require("path");
 
 // @route   POST /api/analysis/upload
 // @desc    Upload dan analyze image
 // @access  Private
 exports.uploadImage = async (req, res) => {
   try {
-    const { userId } = req.body;
-    const imageData = req.file ? req.file.path : req.body.imageData;
+    // Get userId from authenticated user (from auth middleware)
+    const userId = req.user._id;
+    console.log("[Upload Debug] req.file:", req.file);
+    // console.log("[Upload Debug] req.body.imageData type:", typeof req.body.imageData); 
 
-    if (!imageData || !userId) {
-      return res.status(400).json({ message: "Image data and userId required" });
+    // Prioritize Base64 from body if available
+    let imageData;
+    if (req.body.imageData && typeof req.body.imageData === 'string' && req.body.imageData.startsWith('data:image')) {
+      imageData = req.body.imageData;
+      console.log("[Upload Debug] Using Base64 from req.body");
+    } else {
+      imageData = req.file ? req.file.path : req.body.imageData;
+      console.log("[Upload Debug] Using file path or raw body");
     }
 
-    const analysis = await AnalysisService.analyzeHandwriting(
+    if (!imageData) {
+      return res.status(400).json({ message: "Image data required" });
+    }
+
+    const analysis = await analysisService.analyzeHandwriting(
       userId,
       imageData,
       "image"
@@ -23,7 +38,94 @@ exports.uploadImage = async (req, res) => {
       analysis,
     });
   } catch (error) {
+    console.error("[Upload Error]", error);
     res.status(500).json({ message: error.message });
+  }
+};
+
+// @route   GET /api/analysis/:analysisId/pdf
+// @desc    Download Analysis PDF
+// @access  Private
+exports.generatePDF = async (req, res) => {
+  try {
+    const { analysisId } = req.params;
+    const analysis = await analysisService.getAnalysis(analysisId);
+
+    if (!analysis) {
+      return res.status(404).json({ message: "Analysis not found" });
+    }
+
+    // Create PDF
+    const doc = new PDFDocument();
+    const filename = `Analysis_Result_${analysisId}.pdf`;
+
+    res.setHeader("Content-disposition", `attachment; filename="${filename}"`);
+    res.setHeader("Content-type", "application/pdf");
+
+    doc.pipe(res);
+
+    // --- PDF CONTENT ---
+
+    // Header
+    doc.fontSize(20).text("Hasil Analisis Grafologi AI", { align: "center" });
+    doc.moveDown();
+
+    // User Info
+    doc.fontSize(12).text(`Nama: ${analysis.userId.name}`);
+    doc.text(`Email: ${analysis.userId.email}`);
+    doc.text(`Tanggal: ${new Date(analysis.createdAt).toLocaleDateString()}`);
+    doc.moveDown();
+    doc.moveTo(50, doc.y).lineTo(550, doc.y).stroke(); // Separator line
+    doc.moveDown();
+
+    // Enneagram Type
+    doc.fontSize(16).fillColor("purple").text(`Tipe Kepribadian: ${analysis.enneagramType || 'Tidak Terdeteksi'}`, { align: "center" });
+    doc.fontSize(14).fillColor("black").text(`(${analysis.personalityType || 'Unknown'})`, { align: "center" });
+
+    // AI Confidence
+    if (analysis.aiConfidence) {
+      const confPercent = analysis.aiConfidence > 1 ? analysis.aiConfidence : (analysis.aiConfidence * 100).toFixed(0);
+      doc.fontSize(10).fillColor("grey").text(`Akurasi AI: ${confPercent}%`, { align: "center" });
+    }
+    doc.moveDown();
+
+    // Description
+    doc.fontSize(12).text("Deskripsi:", { underline: true });
+    doc.moveDown(0.5);
+    doc.text(analysis.description || "Tidak ada deskripsi.", { align: "justify" });
+    doc.moveDown();
+
+    // Traits (Simple Bar Chart Visualization)
+    if (analysis.traits) {
+      doc.fontSize(12).text("Profil Kepribadian:", { underline: true });
+      doc.moveDown(0.5);
+
+      const traits = analysis.traits; // Access sub-document directly
+      const traitKeys = Object.keys(traits).filter(k => typeof traits[k] === 'number');
+
+      traitKeys.forEach(trait => {
+        const value = traits[trait];
+        const label = trait.charAt(0).toUpperCase() + trait.slice(1).replace(/([A-Z])/g, ' $1');
+
+        doc.text(`${label}: ${value}%`);
+
+        // Draw bar
+        const barWidth = (value / 100) * 300;
+        doc.rect(doc.x, doc.y, barWidth, 10).fill("purple");
+        doc.moveDown(1.5);
+        doc.fillColor("black"); // Reset color
+      });
+    }
+
+    // Footer
+    doc.moveDown(2);
+    doc.fontSize(10).text("Graphology AI - Ungkap Kepribadian dari Tulisan Tangan", { align: "center", text: "grey" });
+
+    doc.end();
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Gagal membuat PDF" });
   }
 };
 
@@ -32,13 +134,15 @@ exports.uploadImage = async (req, res) => {
 // @access  Private
 exports.analyzeCanvas = async (req, res) => {
   try {
-    const { userId, canvasData } = req.body;
+    // Get userId from authenticated user
+    const userId = req.user._id;
+    const { canvasData } = req.body;
 
-    if (!canvasData || !userId) {
-      return res.status(400).json({ message: "Canvas data and userId required" });
+    if (!canvasData) {
+      return res.status(400).json({ message: "Canvas data required" });
     }
 
-    const analysis = await AnalysisService.analyzeHandwriting(
+    const analysis = await analysisService.analyzeHandwriting(
       userId,
       canvasData,
       "canvas"
@@ -49,6 +153,7 @@ exports.analyzeCanvas = async (req, res) => {
       analysis,
     });
   } catch (error) {
+    console.error("[Canvas Error]", error);
     res.status(500).json({ message: error.message });
   }
 };
@@ -60,7 +165,7 @@ exports.getAnalysis = async (req, res) => {
   try {
     const { analysisId } = req.params;
 
-    const analysis = await AnalysisService.getAnalysis(analysisId);
+    const analysis = await analysisService.getAnalysis(analysisId);
 
     if (!analysis) {
       return res.status(404).json({ message: "Analysis not found" });

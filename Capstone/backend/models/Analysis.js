@@ -13,17 +13,22 @@ const analysisSchema = new mongoose.Schema(
       required: true,
     },
     imageUrl: String,
-    canvasData: String, // Base64 encoded canvas image
+    canvasData: String,
+
+    // --- TAMBAHKAN FIELD INI ---
+    enneagramType: {
+      type: String,
+    },
+    aiConfidence: {
+      type: Number, // Score 0-100 or 0-1
+      default: 0
+    },
+    // ---------------------------
+
     personalityType: {
       type: String,
-      enum: [
-        "Optimist",
-        "Introvert",
-        "Creative",
-        "Analytical",
-        "Leader",
-        "Dreamer",
-      ],
+      // Hapus enum jika Anda ingin tipe kepribadian lebih fleksibel 
+      // atau biarkan jika sudah sesuai mapping
     },
     traits: {
       confidence: { type: Number, min: 0, max: 100 },
