@@ -1,19 +1,20 @@
 "use client";
 
-import { useEffect } from "react";
-import client from "@/api/client";
+import { useEffect, useState } from "react";
+import { motion } from "framer-motion";
+import { Download, Share2, FileText, CheckCircle } from "lucide-react";
 
-export default function HasilAnalisis({ analysis }) {
-  // Debugging untuk melihat struktur data di console browser
+export default function AnalysisResult({ analysis }) {
+  const [isExporting, setIsExporting] = useState(false);
+
+  // Debugging
   useEffect(() => {
-    console.log("Data analysis yang diterima component:", analysis);
+    console.log("Data diterima Frontend:", analysis);
   }, [analysis]);
 
   if (!analysis) return null;
 
-  /**
-   * Normalisasi Data
-   */
+  // --- 1. NORMALISASI DATA ---
   const rawData = analysis.data ? analysis.data : analysis;
 
   // Persiapan Data untuk Tampilan
@@ -21,58 +22,210 @@ export default function HasilAnalisis({ analysis }) {
     enneagram: rawData.enneagramType || "Tipe Tidak Terdeteksi",
     personality: rawData.personalityType || "Unknown Type",
     description: rawData.description || "Deskripsi tidak tersedia.",
-    // Ambil Confidence Score Asli dari AI
-    confidence: rawData.aiConfidence ? (rawData.aiConfidence > 1 ? rawData.aiConfidence : (rawData.aiConfidence * 100).toFixed(0)) : (rawData.confidenceScore ? parseFloat(rawData.confidenceScore).toFixed(2) : "0"),
-    // Ambil Data Fitur Grafologi (Slant, Size, dll)
-    features: rawData.graphologyAnalysis || null,
+    
+    // Ambil Confidence (Bulatkan ke angka)
+    confidence: rawData.confidence ? Math.round(rawData.confidence) : 0,
+
+    // Ambil Features (Traits dari Backend)
+    features: rawData.traits || rawData.graphologyAnalysis || null,
+    
+    // Gambar
     image: rawData.imageUrl || rawData.canvasData,
-    recommendations: [
-      "Manfaatkan kekuatan unik tipe kepribadian Anda",
-      "Perhatikan area pengembangan diri yang disarankan",
-      "Jaga keseimbangan emosi dan logika dalam pengambilan keputusan"
-    ]
+
+    // Rekomendasi: Gunakan data dari Backend jika ada, jika tidak gunakan fallback
+    recommendations: (rawData.recommendations && rawData.recommendations.length > 0) 
+      ? rawData.recommendations 
+      : [ 'Template default....']
   };
 
-  // Logika Warna untuk Confidence Level
-  const getConfidenceColor = (score) => {
-    if (score >= 80) return "text-green-600 bg-green-100"; // Sangat Yakin
-    if (score >= 60) return "text-yellow-600 bg-yellow-100"; // Cukup Yakin
-    return "text-red-600 bg-red-100"; // Kurang Yakin
-  };
-
-  // Function to download PDF
+  // --- 2. FUNGSI DOWNLOAD PDF (CLIENT SIDE - jspdf) ---
   const handleDownloadPDF = async () => {
     try {
-      const response = await client.get(`/api/analysis/${rawData._id}/pdf`, {
-        responseType: 'blob'
+      setIsExporting(true);
+      const { jsPDF } = await import("jspdf");
+      
+      const doc = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4",
       });
-      const url = window.URL.createObjectURL(new Blob([response]));
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `Hasil_Analisis_${displayData.enneagram.replace(/\s+/g, '_')}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
+
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      let yPosition = 20;
+
+      // -- Header --
+      doc.setFontSize(22);
+      doc.setTextColor(88, 28, 135); // Ungu
+      doc.text("Graphology Analysis Result", pageWidth / 2, yPosition, { align: "center" });
+      yPosition += 15;
+
+      // -- Main Result --
+      doc.setFontSize(16);
+      doc.setTextColor(0, 0, 0);
+      doc.text(`Tipe: ${displayData.enneagram} (${displayData.personality})`, 20, yPosition);
+      yPosition += 8;
+
+      doc.setFontSize(12);
+      doc.setTextColor(100, 100, 100);
+      doc.text(`AI Confidence: ${displayData.confidence}%`, 20, yPosition);
+      yPosition += 15;
+
+      // -- Description --
+      doc.setFontSize(14);
+      doc.setTextColor(0, 0, 0);
+      doc.text("Interpretasi Kepribadian", 20, yPosition);
+      yPosition += 7;
+
+      doc.setFontSize(11);
+      doc.setTextColor(60, 60, 60);
+      const descLines = doc.splitTextToSize(displayData.description, pageWidth - 40);
+      doc.text(descLines, 20, yPosition);
+      yPosition += descLines.length * 5 + 10;
+
+      // -- Graphology Features (Tabel Manual) --
+      if (displayData.features) {
+        doc.setFontSize(14);
+        doc.setTextColor(0, 0, 0);
+        doc.text("Analisis Fitur Grafologi", 20, yPosition);
+        yPosition += 10;
+
+        const featuresToPrint = [
+          { label: "Slant (Kemiringan)", data: displayData.features.slant },
+          { label: "Size (Ukuran)", data: displayData.features.size },
+          { label: "Pressure (Tekanan)", data: displayData.features.pressure },
+          { label: "Baseline (Arah)", data: displayData.features.baseline },
+        ];
+
+        doc.setFontSize(10);
+        featuresToPrint.forEach((item) => {
+          if (item.data) {
+            // Label
+            doc.setFont("helvetica", "bold");
+            doc.setTextColor(88, 28, 135);
+            doc.text(item.label + ":", 20, yPosition);
+            
+            // Value
+            doc.setFont("helvetica", "normal");
+            doc.setTextColor(0, 0, 0);
+            const valueText = `${item.data.val} - ${item.data.meaning}`;
+            const valueLines = doc.splitTextToSize(valueText, pageWidth - 70);
+            doc.text(valueLines, 70, yPosition);
+            
+            yPosition += valueLines.length * 5 + 3;
+          }
+        });
+      }
+
+      // -- TAMBAHAN: REKOMENDASI DI PDF --
+      yPosition += 10;
+      // Cek apakah muat di halaman, kalau tidak addPage
+      if (yPosition > pageHeight - 50) {
+          doc.addPage();
+          yPosition = 20;
+      }
+
+      doc.setFontSize(14);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(0, 0, 0);
+      doc.text("Rekomendasi Pengembangan Diri", 20, yPosition);
+      yPosition += 8;
+
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(60, 60, 60);
+
+      displayData.recommendations.forEach((rec, index) => {
+          const prefix = `${index + 1}. `;
+          const recLines = doc.splitTextToSize(prefix + rec, pageWidth - 40);
+          doc.text(recLines, 20, yPosition);
+          yPosition += recLines.length * 5 + 2;
+      });
+
+      // -- Footer --
+      doc.setFontSize(8);
+      doc.setTextColor(150, 150, 150);
+      doc.text(
+        `Generated by Grapholyze on ${new Date().toLocaleDateString()}`,
+        pageWidth / 2,
+        pageHeight - 10,
+        { align: "center" }
+      );
+
+      doc.save(`Analysis_${displayData.enneagram}.pdf`);
+      setIsExporting(false);
+
     } catch (error) {
-      console.error("Download failed:", error);
-      alert("Gagal mendownload PDF. Pastikan backend berjalan.");
+      console.error("Error generating PDF:", error);
+      alert("Gagal membuat PDF. Coba lagi.");
+      setIsExporting(false);
     }
   };
 
-  return (
-    <div className="space-y-8">
+  // --- 3. FUNGSI DOWNLOAD TXT ---
+  const handleDownloadTxt = () => {
+    const f = displayData.features || {};
+    
+    // Format Rekomendasi untuk TXT
+    const recText = displayData.recommendations
+        .map((r, i) => `${i + 1}. ${r}`)
+        .join('\n');
 
-      {/* SECTION 1: Image & Confidence Result */}
+    const txtContent = `
+Graphology Analysis Result
+==========================
+Date: ${new Date().toLocaleDateString()}
+
+RESULT
+------
+Type: ${displayData.enneagram}
+Personality: ${displayData.personality}
+Confidence: ${displayData.confidence}%
+
+DESCRIPTION
+-----------
+${displayData.description}
+
+RECOMMENDATIONS
+---------------
+${recText}
+
+GRAPHOLOGY FEATURES
+-------------------
+1. Slant: ${f.slant?.val || '-'} 
+   Meaning: ${f.slant?.meaning || '-'}
+2. Size: ${f.size?.val || '-'}
+   Meaning: ${f.size?.meaning || '-'}
+3. Pressure: ${f.pressure?.val || '-'}
+   Meaning: ${f.pressure?.meaning || '-'}
+4. Baseline: ${f.baseline?.val || '-'}
+   Meaning: ${f.baseline?.meaning || '-'}
+    `.trim();
+
+    const element = document.createElement("a");
+    const file = new Blob([txtContent], { type: "text/plain" });
+    element.href = URL.createObjectURL(file);
+    element.download = `Analysis_${displayData.enneagram}.txt`;
+    document.body.appendChild(element);
+    element.click();
+    document.body.removeChild(element);
+  };
+
+
+  return (
+    <div className="space-y-8 animate-in fade-in duration-700">
+
+      {/* SECTION 1: Image & Confidence Result (Sama Seperti Aslinya) */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
         {/* Kolom Kiri: Gambar */}
         {displayData.image && (
-          <div className="bg-white shadow-lg rounded-2xl p-6 text-center flex flex-col items-center justify-center">
+          <div className="bg-white shadow-lg rounded-2xl p-6 text-center flex flex-col items-center justify-center border border-gray-100">
             <h3 className="text-sm font-semibold text-gray-500 mb-3 uppercase tracking-wider">Citra Tulisan Tangan</h3>
-            <div className="relative rounded-lg overflow-hidden border border-gray-200">
+            <div className="relative rounded-lg overflow-hidden border border-gray-200 bg-gray-50">
               <img
                 src={displayData.image}
                 alt="Tulisan tangan user"
-                className="max-h-64 object-contain"
+                className="max-h-64 object-contain mx-auto"
               />
             </div>
             <p className="text-xs text-gray-400 mt-2 italic">
@@ -82,44 +235,53 @@ export default function HasilAnalisis({ analysis }) {
         )}
 
         {/* Kolom Kanan: Hasil Utama & Confidence */}
-        <div className="bg-gradient-to-br from-indigo-600 to-purple-700 text-white shadow-lg rounded-2xl p-8 flex flex-col justify-center relative overflow-hidden">
+        <div className="bg-gradient-to-br from-indigo-600 to-purple-700 text-white shadow-xl rounded-2xl p-8 flex flex-col justify-center relative overflow-hidden">
           {/* Hiasan Background */}
-          <div className="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 bg-white opacity-10 rounded-full blur-xl"></div>
+          <div className="absolute top-0 right-0 -mt-4 -mr-4 w-32 h-32 bg-white opacity-10 rounded-full blur-2xl"></div>
 
           <h2 className="text-sm font-medium opacity-80 uppercase tracking-widest mb-1">Hasil Prediksi AI</h2>
 
           {/* Tipe Enneagram */}
-          <div className="text-4xl font-extrabold mb-2 text-white">
+          <div className="text-5xl font-extrabold mb-2 text-white tracking-tight">
             {displayData.enneagram}
           </div>
-          <div className="text-xl font-medium text-indigo-100 mb-6">
+          <div className="text-xl font-medium text-indigo-100 mb-8">
             {displayData.personality}
           </div>
 
-          {/* CONFIDENCE LEVEL INDICATOR (Wajib Ada) */}
-          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20">
-            <div className="flex justify-between items-end mb-2">
+          {/* CONFIDENCE LEVEL INDICATOR */}
+          <div className="bg-white/10 backdrop-blur-md rounded-xl p-5 border border-white/20">
+            <div className="flex justify-between items-end mb-3">
               <span className="text-sm font-medium text-indigo-100">Tingkat Keyakinan AI</span>
-              <span className="text-2xl font-bold text-white">{displayData.confidence}%</span>
+              <div className="flex items-baseline gap-1">
+                <span className="text-3xl font-bold text-white">{displayData.confidence}</span>
+                <span className="text-sm text-indigo-200">%</span>
+              </div>
             </div>
+            
             {/* Progress Bar Confidence */}
-            <div className="w-full bg-black/20 rounded-full h-2.5">
-              <div
-                className="bg-green-400 h-2.5 rounded-full transition-all duration-1000 ease-out shadow-[0_0_10px_rgba(74,222,128,0.5)]"
-                style={{ width: `${displayData.confidence}%` }}
-              ></div>
+            <div className="w-full bg-black/20 rounded-full h-3 overflow-hidden">
+              <motion.div
+                initial={{ width: 0 }}
+                animate={{ width: `${displayData.confidence}%` }}
+                transition={{ duration: 1.5, ease: "easeOut" }}
+                className={`h-full rounded-full ${
+                  displayData.confidence > 80 ? 'bg-green-400' : 
+                  displayData.confidence > 50 ? 'bg-yellow-400' : 'bg-red-400'
+                } shadow-[0_0_10px_rgba(255,255,255,0.3)]`}
+              ></motion.div>
             </div>
-            <p className="text-xs text-indigo-200 mt-2 text-right">
-              *Berdasarkan probabilitas output MobileNetV2
+            
+            <p className="text-xs text-indigo-200 mt-2 text-right italic">
+              *Probabilitas output model MobileNetV2
             </p>
           </div>
         </div>
       </div>
 
       {/* SECTION 2: Interpretasi Deskriptif */}
-      <div className="bg-indigo-50 border-l-4 border-indigo-600 rounded-lg p-6 shadow-sm">
+      <div className="bg-indigo-50 border-l-4 border-indigo-600 rounded-r-lg p-6 shadow-sm">
         <h3 className="text-lg font-bold text-indigo-900 mb-2 flex items-center gap-2">
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
           Interpretasi Kepribadian
         </h3>
         <p className="text-gray-700 leading-relaxed text-lg">
@@ -128,43 +290,35 @@ export default function HasilAnalisis({ analysis }) {
       </div>
 
       {/* SECTION 3: Analisis Fitur Grafologi (The "Scientific" Part) */}
-      {/* Menggantikan "Traits" lama dengan Fitur Spesifik dari Backend */}
       {displayData.features && (
         <div className="bg-white shadow-lg rounded-2xl p-8 border border-gray-100">
           <div className="mb-6 border-b border-gray-100 pb-4">
             <h3 className="text-2xl font-bold text-gray-800">Analisis Fitur Grafologi</h3>
             <p className="text-gray-500 text-sm mt-1">
-              Penjelasan karakteristik visual berdasarkan literatur (Howard, 1922 & Lester, 1981) yang diasosiasikan dengan {displayData.enneagram}.
+              Penjelasan karakteristik visual berdasarkan literatur (Howard, 1922 & Lester, 1981).
             </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Fitur 1: Slant (Kemiringan) */}
             <FeatureCard
               label="Kemiringan (Slant)"
               value={displayData.features.slant?.val}
               meaning={displayData.features.slant?.meaning}
               icon="📐"
             />
-
-            {/* Fitur 2: Size (Ukuran) */}
             <FeatureCard
               label="Ukuran Huruf (Size)"
               value={displayData.features.size?.val}
               meaning={displayData.features.size?.meaning}
               icon="🔍"
             />
-
-            {/* Fitur 3: Pressure (Tekanan) - Dengan Note HE */}
             <FeatureCard
-              label="Tekanan (Pressure/Shading)"
+              label="Tekanan (Pressure)"
               value={displayData.features.pressure?.val}
               meaning={displayData.features.pressure?.meaning}
               icon="✒️"
-              isHeEnhanced={true} // Special flag untuk HE
+              isHeEnhanced={true}
             />
-
-            {/* Fitur 4: Baseline */}
             <FeatureCard
               label="Arah Baris (Baseline)"
               value={displayData.features.baseline?.val}
@@ -175,10 +329,10 @@ export default function HasilAnalisis({ analysis }) {
         </div>
       )}
 
-      {/* SECTION 4: Rekomendasi */}
-      <div className="bg-white shadow-lg rounded-2xl p-8">
+      {/* SECTION 4: Rekomendasi (Dinamis dari Data) */}
+      <div className="bg-white shadow-lg rounded-2xl p-8 border border-gray-100">
         <h3 className="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
-          <span className="bg-purple-100 text-purple-600 p-2 rounded-lg text-xl">💡</span>
+          <CheckCircle className="text-purple-600" />
           Rekomendasi Pengembangan Diri
         </h3>
         <ul className="space-y-3">
@@ -193,20 +347,40 @@ export default function HasilAnalisis({ analysis }) {
         </ul>
       </div>
 
-      {/* SECTION 5: CTA Download */}
-      <div className="text-center pt-4 pb-8">
-        <button
+      {/* SECTION 5: ACTION BUTTONS (PDF / TXT) */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Tombol PDF */}
+        <motion.button
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
           onClick={handleDownloadPDF}
-          className="bg-gray-900 text-white px-8 py-4 rounded-xl font-semibold hover:bg-gray-800 transition shadow-lg flex items-center justify-center gap-3 mx-auto"
+          disabled={isExporting}
+          className="flex items-center justify-center gap-2 px-6 py-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold rounded-2xl transition disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-            <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
-          </svg>
-          Unduh Laporan Lengkap (PDF)
-        </button>
-        <p className="text-sm text-gray-400 mt-3">
-          Simpan hasil analisis ini untuk referensi PKM atau konsultasi lebih lanjut.
-        </p>
+          <FileText size={20} />
+          {isExporting ? "Generating PDF..." : "Download PDF"}
+        </motion.button>
+
+        {/* Tombol TXT */}
+        <motion.button
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          onClick={handleDownloadTxt}
+          className="flex items-center justify-center gap-2 px-6 py-4 bg-indigo-100 hover:bg-indigo-200 text-indigo-600 font-semibold rounded-2xl transition shadow-sm"
+        >
+          <Download size={20} />
+          Download TXT
+        </motion.button>
+
+        {/* Tombol Share */}
+        <motion.button
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          className="flex items-center justify-center gap-2 px-6 py-4 bg-purple-100 hover:bg-purple-200 text-purple-600 font-semibold rounded-2xl transition shadow-sm"
+        >
+          <Share2 size={20} />
+          Share Result
+        </motion.button>
       </div>
     </div>
   );
@@ -217,7 +391,7 @@ function FeatureCard({ label, value, meaning, icon, isHeEnhanced }) {
   if (!value) return null;
 
   return (
-    <div className="bg-gray-50 rounded-xl p-5 border border-gray-100 hover:border-indigo-200 transition-all duration-300">
+    <div className="bg-gray-50 rounded-xl p-5 border border-gray-100 hover:border-indigo-200 hover:shadow-md transition-all duration-300">
       <div className="flex items-center gap-3 mb-2">
         <span className="text-2xl">{icon}</span>
         <h4 className="font-semibold text-gray-700">{label}</h4>
@@ -227,11 +401,9 @@ function FeatureCard({ label, value, meaning, icon, isHeEnhanced }) {
         <div className="text-indigo-600 font-bold text-lg mb-1">{value}</div>
         <p className="text-sm text-gray-600 leading-snug">{meaning}</p>
 
-        {/* Tampilan Khusus jika fitur ini menggunakan HE (Histogram Equalization) */}
         {isHeEnhanced && (
           <div className="mt-3 inline-flex items-center gap-1.5 px-3 py-1 bg-indigo-100 text-indigo-700 text-xs font-medium rounded-full">
-            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z" /></svg>
-            Enhanced by Histogram Equalization
+            Enhanced by HE
           </div>
         )}
       </div>

@@ -9,35 +9,56 @@ const analysisSchema = new mongoose.Schema(
     },
     analysisType: {
       type: String,
-      enum: ["image", "canvas"],
-      required: true,
+      enum: ["image", "canvas", "pdf"],
+      default: "image",
     },
     imageUrl: String,
     canvasData: String,
 
-    // --- TAMBAHKAN FIELD INI ---
+    // --- HASIL AI (Disamakan dengan Service) ---
     enneagramType: {
-      type: String,
+      type: String, // Contoh: "Tipe 1"
     },
-    aiConfidence: {
-      type: Number, // Score 0-100 or 0-1
+    personalityType: {
+      type: String, // Contoh: "The Reformer"
+    },
+    
+    // ✅ CONFIDENCE (Sudah Benar)
+    confidence: {
+      type: Number, 
       default: 0
     },
-    // ---------------------------
 
-    personalityType: {
-      type: String,
-      // Hapus enum jika Anda ingin tipe kepribadian lebih fleksibel 
-      // atau biarkan jika sudah sesuai mapping
-    },
+    // ✅ TRAITS (Sudah Benar & Detail)
+    // Struktur ini cocok dengan data yang dikirim dari AnalysisService
     traits: {
-      confidence: { type: Number, min: 0, max: 100 },
-      creativity: { type: Number, min: 0, max: 100 },
-      extraversion: { type: Number, min: 0, max: 100 },
-      analyticalMind: { type: Number, min: 0, max: 100 },
-      emotionalIntelligence: { type: Number, min: 0, max: 100 },
+      slant: {
+        val: String,
+        meaning: String
+      },
+      size: {
+        val: String,
+        meaning: String
+      },
+      pressure: {
+        val: String,
+        meaning: String
+      },
+      baseline: {
+        val: String,
+        meaning: String
+      }
     },
+
     description: String,
+
+    // 🔥 TAMBAHAN BARU (WAJIB ADA) 🔥
+    // Tanpa ini, rekomendasi spesifik dari Service tidak akan tersimpan di Database
+    recommendations: {
+      type: [String], // Array berisi kalimat-kalimat rekomendasi
+      default: []
+    },
+
     status: {
       type: String,
       enum: ["pending", "completed", "failed"],

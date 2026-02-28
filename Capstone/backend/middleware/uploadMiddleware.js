@@ -1,10 +1,18 @@
 const multer = require('multer');
 const path = require('path');
+const fs = require('fs'); // ⬅️ Tambahkan ini
+
+// 1. Pastikan folder tujuan ADA. Kalau tidak ada, buat dulu.
+const uploadDir = './uploads/profiles/';
+if (!fs.existsSync(uploadDir)){
+    fs.mkdirSync(uploadDir, { recursive: true });
+}
 
 // Set storage engine
 const storage = multer.diskStorage({
-    destination: './uploads/profiles/',
+    destination: uploadDir, // Gunakan variabel di atas
     filename: function (req, file, cb) {
+        // Format: profile-TIMESTAMP.ext
         cb(null, 'profile-' + Date.now() + path.extname(file.originalname));
     }
 });
@@ -21,7 +29,7 @@ function checkFileType(file, cb) {
     if (mimetype && extname) {
         return cb(null, true);
     } else {
-        cb('Error: Images Only!');
+        cb(new Error('Error: Images Only!')); // Gunakan new Error() agar lebih standar
     }
 }
 

@@ -2,7 +2,7 @@ import axios from "axios";
 
 const apiUrl =
   process.env.NEXT_PUBLIC_API_URL ||
-  "http://localhost:5000";
+  "http://localhost:8000";
 
 console.log("API BASE URL:", apiUrl);
 

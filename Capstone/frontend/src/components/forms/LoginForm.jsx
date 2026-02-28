@@ -46,19 +46,20 @@ export default function LoginForm() {
     setLoading(true);
 
     try {
-      // Call backend API untuk login
+      // 1. Call backend API untuk login
+      // Backend akan men-set HttpOnly Cookie secara otomatis
       const loginResponse = await authApi.login(email, password);
 
-      console.log("LOGIN RAW RESPONSE:", loginResponse); // DEBUG
+      console.log("LOGIN RAW RESPONSE:", loginResponse); 
 
-      if (loginResponse.token) {
-        // 1. Simpan Token dulu agar request berikutnya ter-autentikasi
-        localStorage.setItem("authToken", loginResponse.token);
-
-        // 2. Fetch User Profile lengkap agar yakin dapat ID
+      // ✅ PERBAIKAN DI SINI: Cek 'success', bukan 'token'
+      if (loginResponse.success) {
+        
+        // 2. Fetch User Profile lengkap
+        // (Browser otomatis mengirim cookie token yang baru didapat)
         try {
           const userProfile = await authApi.getProfile();
-          console.log("FULL USER PROFILE FETCHED:", userProfile); // DEBUG
+          console.log("FULL USER PROFILE FETCHED:", userProfile);
 
           const userDataToSave = {
             id: userProfile._id || userProfile.id,
@@ -68,32 +69,38 @@ export default function LoginForm() {
             photo: userProfile.photo,
           };
 
-          // 3. Simpan ke State & LocalStorage
-          login({ ...userDataToSave, token: loginResponse.token });
+          // 3. Simpan Data User ke Context & LocalStorage (Tanpa Token)
+          // Kita tidak perlu menyimpan token string lagi
+          login(userDataToSave); 
           localStorage.setItem("userData", JSON.stringify(userDataToSave));
 
           // 4. Redirect
           console.log("Redirecting based on role:", userProfile.role);
+          
           if (userProfile.role === 'admin') {
-            // Set cookie for middleware
+            // Set flag client-side untuk middleware (opsional, tergantung logic middleware kamu)
             document.cookie = "admin_access=true; path=/";
-            console.log("Going to /admin");
             router.push("/admin");
           } else {
-            console.log("Going to /");
             router.push("/");
           }
+
         } catch (profileError) {
           console.error("Failed to fetch profile:", profileError);
+          // Jika gagal ambil profil, anggap login gagal
           throw new Error("Gagal mengambil data profil user.");
         }
+
       } else {
-        throw new Error("Login berhasil tetapi tidak menerima token.");
+        // Jika success: false
+        throw new Error(loginResponse.message || "Login gagal.");
       }
+
     } catch (err) {
-      console.warn("Login attempt failed:", err); // Warn is better than Error to avoid "Issue" overlay
+      console.warn("Login attempt failed:", err);
       setError(`Terjadi kesalahan: ${err.message || 'Silakan coba lagi.'}`);
-      setLoading(false);
+    } finally {
+        setLoading(false);
     }
   };
 

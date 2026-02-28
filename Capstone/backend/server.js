@@ -13,14 +13,14 @@ const app = express();
 app.use(cookieParser());
 
 app.use(cors({
-  origin: "https://graphologyai.netlify.app",
+  origin: ['http://localhost:3000','http://127.0.0.1:3000'],
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"]
 }));
 
 // ⬅️ STOP preflight di sini (PENTING)
-app.options('*', (req, res) => {
+app.options(/(.*)/, (req, res) => {
   res.sendStatus(200);
 });
 
