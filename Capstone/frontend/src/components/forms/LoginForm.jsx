@@ -46,61 +46,46 @@ export default function LoginForm() {
     setLoading(true);
 
     try {
-      // 1. Call backend API untuk login
-      // Backend akan men-set HttpOnly Cookie secara otomatis
+      // 1️⃣ Login ke backend
       const loginResponse = await authApi.login(email, password);
 
-      console.log("LOGIN RAW RESPONSE:", loginResponse); 
+      console.log("LOGIN RAW RESPONSE:", loginResponse);
 
-      // ✅ PERBAIKAN DI SINI: Cek 'success', bukan 'token'
-      if (loginResponse.success) {
-        
-        // 2. Fetch User Profile lengkap
-        // (Browser otomatis mengirim cookie token yang baru didapat)
-        try {
-          const userProfile = await authApi.getProfile();
-          console.log("FULL USER PROFILE FETCHED:", userProfile);
-
-          const userDataToSave = {
-            id: userProfile._id || userProfile.id,
-            email: userProfile.email,
-            name: userProfile.name,
-            role: userProfile.role || "user",
-            photo: userProfile.photo,
-          };
-
-          // 3. Simpan Data User ke Context & LocalStorage (Tanpa Token)
-          // Kita tidak perlu menyimpan token string lagi
-          login(userDataToSave); 
-          localStorage.setItem("userData", JSON.stringify(userDataToSave));
-
-          // 4. Redirect
-          console.log("Redirecting based on role:", userProfile.role);
-          
-          if (userProfile.role === 'admin') {
-            // Set flag client-side untuk middleware (opsional, tergantung logic middleware kamu)
-            document.cookie = "admin_access=true; path=/";
-            router.push("/admin");
-          } else {
-            router.push("/");
-          }
-
-        } catch (profileError) {
-          console.error("Failed to fetch profile:", profileError);
-          // Jika gagal ambil profil, anggap login gagal
-          throw new Error("Gagal mengambil data profil user.");
-        }
-
-      } else {
-        // Jika success: false
+      // 2️⃣ Pastikan login sukses dan ada token
+      if (!loginResponse.success || !loginResponse.token) {
         throw new Error(loginResponse.message || "Login gagal.");
       }
 
+      // 3️⃣ Simpan token ke localStorage (WAJIB)
+      localStorage.setItem("token", loginResponse.token);
+
+      // 4️⃣ Ambil profile (sekarang header Authorization otomatis dikirim oleh interceptor)
+      const userProfile = await authApi.getProfile();
+      console.log("FULL USER PROFILE FETCHED:", userProfile);
+
+      const userDataToSave = {
+        id: userProfile._id || userProfile.id,
+        email: userProfile.email,
+        name: userProfile.name,
+        role: userProfile.role || "user",
+        photo: userProfile.photo,
+      };
+
+      // 5️⃣ Simpan user ke context + localStorage
+      login(userDataToSave);
+      localStorage.setItem("userData", JSON.stringify(userDataToSave));
+
+      // 6️⃣ Redirect berdasarkan role
+      if (userProfile.role === "admin") {
+        router.push("/admin");
+      } else {
+        router.push("/");
+      }
     } catch (err) {
       console.warn("Login attempt failed:", err);
-      setError(`Terjadi kesalahan: ${err.message || 'Silakan coba lagi.'}`);
+      setError(`Terjadi kesalahan: ${err.message || "Silakan coba lagi."}`);
     } finally {
-        setLoading(false);
+      setLoading(false);
     }
   };
 

@@ -1,22 +1,33 @@
-"use client";
+import axios from "axios";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-export default function LoginRedirect() {
-  const router = useRouter();
+const client = axios.create({
+  baseURL: apiUrl,
+  headers: {
+    "Content-Type": "application/json",
+  },
+});
 
-  useEffect(() => {
-    // Redirect dari /login ke /auth/login
-    router.replace("/auth/login");
-  }, [router]);
+// ✅ TAMBAHKAN INI
+client.interceptors.request.use((config) => {
+  const token = localStorage.getItem("token");
 
-  return (
-    <div className="flex items-center justify-center min-h-screen">
-      <div className="text-center">
-        <div className="w-12 h-12 border-4 border-purple-200 border-t-purple-600 rounded-full animate-spin mx-auto mb-4"></div>
-        <p className="text-gray-600">Redirecting to login...</p>
-      </div>
-    </div>
-  );
-}
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+
+  return config;
+});
+
+// response interceptor (yang sudah ada)
+client.interceptors.response.use(
+  (response) => response.data,
+  (error) => {
+    const message = error.response?.data?.message || error.message || "Terjadi kesalahan";
+
+    return Promise.reject(new Error(message));
+  },
+);
+
+export default client;
