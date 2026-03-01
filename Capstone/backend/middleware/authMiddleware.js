@@ -2,16 +2,16 @@ const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 
 const protect = async (req, res, next) => {
-  // ✅ 1. IZINKAN PREFLIGHT CORS
   if (req.method === "OPTIONS") {
     return next();
   }
 
   let token;
 
-  // ✅ 2. AMBIL TOKEN DARI COOKIE (BUKAN HEADER)
-  if (req.cookies && req.cookies.token) {
-    token = req.cookies.token;
+  const authHeader = req.headers.authorization;
+
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    token = authHeader.split(" ")[1];
   }
 
   if (!token) {
@@ -29,8 +29,7 @@ const protect = async (req, res, next) => {
 
     next();
   } catch (error) {
-    console.error("JWT Error:", error.message);
-    res.status(401).json({ message: "Not authorized, token failed" });
+    return res.status(401).json({ message: "Token failed" });
   }
 };
 

@@ -37,18 +37,9 @@ const loginUser = async (req, res) => {
     const result = await authService.login(email, password);
     const { token, user } = result;
 
-    const isProduction = process.env.NODE_ENV === "production";
-
-    // ✅ SET COOKIE (WAJIB UNTUK NETLIFY + RAILWAY)
-    res.cookie("token", token, {
-      httpOnly: true,
-      secure: true,
-      sameSite: "none",
-      maxAge: 24 * 60 * 60 * 1000,
-    });
-
     res.status(200).json({
       success: true,
+      token,
       user,
     });
   } catch (error) {
